@@ -1,0 +1,38 @@
+{
+  "name": "fake-server-generator",
+  "version": "0.1.0",
+  "description": "generator fake api server project skeleton",
+  "main": "bin/index.js",
+  "bin": {
+    "fs-gen": "bin/index.js"
+  },
+  "scripts": {
+    "lint": "eslint lint",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/varlinor/fake-server-generator.git"
+  },
+  "keywords": [
+    "express",
+    "fake-api-server",
+    "cli",
+    "generator"
+  ],
+  "author": "George Shen (varlinor@hotmail.com)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/varlinor/fake-server-generator/issues"
+  },
+  "homepage": "https://github.com/varlinor/fake-server-generator#readme",
+  "dependencies": {
+    "colors": "^1.4.0",
+    "commander": "^6.0.0",
+    "shelljs": "^0.8.4"
+  },
+  "devDependencies": {
+    "eslint": "^7.5.0",
+    "eslint-config-airbnb": "^18.2.0"
+  }
+}
