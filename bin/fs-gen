@@ -1,0 +1,316 @@
+#!/usr/bin/env node
+'use strict';
+
+function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
+
+var path = _interopDefault(require('path'));
+var program = _interopDefault(require('commander'));
+require('colors');
+var fs = _interopDefault(require('fs'));
+var shell = _interopDefault(require('shelljs'));
+
+var version = "0.1.0";
+
+const Framework={
+        EXPRESS:'express',
+        KOA2:'koa2',
+        EGG2:'egg2'
+    },
+    ViewTemplate={
+        HBS:'hbs',
+        PUG:'pug'
+    },
+    TemplatePath={
+        BinPath:'/bin',
+        AppPath:'./',
+        PublicPath:'/public',
+        RoutePath:'/routes',
+        ViewPath:'/view',
+        GitIgnore:'./',
+        PkgPath:'./',
+        ESLint:'./'
+    },
+    Operation={
+        Write:'w',
+        Copy:'c',
+        MakeDir:'m',
+        None:'n',
+    },
+    DEF_FILE_OBJ={
+        operation:Operation.None,
+        path:undefined,
+        content:undefined
+    };
+
+function createFileObject(operation,opts){
+    let set={};
+    if(Operation.Write===operation){
+        set={operation,content:opts.content};
+    }else if(Operation.Copy===operation){
+        set={operation,path:opts.path};
+    }else {
+        set={operation};
+    }
+    return Object.assign({},DEF_FILE_OBJ,set);
+}
+
+/**
+ * base class for template loader
+ */
+class TemplateLoader {
+    constructor(setting){
+        this.setting=setting;
+        this.template=new Map();  //  path => content
+        this.__init();
+    }
+
+    __init() {
+        let bin=this.parseBinContent(),
+            app=this.parseAppContent(),
+            pkg=this.parsePkgContent();
+        this.template.set(path.join(TemplatePath.BinPath,'www'),
+            createFileObject(Operation.Write,{content:bin}));
+        this.template.set(path.join(TemplatePath.AppPath,'app.js'),
+            createFileObject(Operation.Write,{content:app}));
+        this.template.set(path.join(TemplatePath.PkgPath,'package.json'),
+            createFileObject(Operation.Write,{content:pkg}));
+        this.addRouteFiles();
+        this.addViews();
+        addPublics(this.template);
+        addGitignore(this.template);
+        // console.log(this.template);
+    }
+
+    getTemplate(){
+        return this.template;
+    }
+
+    /**
+     * return bin/www content
+     */
+    parseBinContent(){}
+
+    /**
+     * return app.js content
+     */
+    parseAppContent(){}
+
+    /**
+     * add router files
+     */
+    addRouteFiles(){}
+
+    /**
+     * add views files
+     */
+    addViews(){}
+
+    /**
+     * return package.json content
+     */
+    parsePkgContent(){}
+
+}
+
+const addGitignore = function (map){
+    map.set(path.join(TemplatePath.GitIgnore,'.gitignore'),
+        createFileObject(Operation.Copy,{path:'/templates/gitignore'}));
+    return map;
+};
+
+const addPublics = function (map){
+    map.set(path.join(TemplatePath.PublicPath,'/images'),createFileObject(Operation.MakeDir));
+    map.set(path.join(TemplatePath.PublicPath,'/javascripts'),createFileObject(Operation.MakeDir));
+    map.set(path.join(TemplatePath.PublicPath,'/stylesheets/base.css'),
+        createFileObject(Operation.Copy,{path:'/templates/base.css'}));
+    return map;
+};
+
+class Koa2TemplateLoader extends TemplateLoader{
+
+    constructor(setting){
+        super(setting);
+    }
+
+    parseBinContent(){}
+
+    parseAppContent(){}
+
+    addRouteFiles(){}
+
+    addViews(){}
+
+    parsePkgContent(){}
+}
+
+class ExpressTemplateLoader extends TemplateLoader{
+
+    constructor(setting){
+        super(setting);
+    }
+
+    parseBinContent(){}
+
+    parseAppContent(){}
+
+    addRouteFiles(){}
+
+    addViews(){}
+
+    parsePkgContent(){}
+}
+
+const _def_opts={
+    appName:'',
+    destPath:'',
+    framework:'',
+    view:'',
+    noView:false,
+    git:false,
+    eslint:false,
+};
+
+/**
+ * generator framework template
+ */
+class ServerGenerator{
+
+    constructor(opts){
+        this.options=Object.assign({},_def_opts,opts);
+        this.appName=this.options.appName;
+        this.destPath=this.options.destPath;
+        this.framework=this.options.framework;
+        this.view=this.options.view;
+        this.gitFlag=this.options.git;
+        this.eslintFlag=this.options.eslint;
+        this.template=null;
+    }
+
+    generator(){
+        // load to map
+        this.__loadTemplate();
+        // process map
+        this.__processTemplates();
+    }
+
+    __loadTemplate(){
+        let ParseClass=undefined;
+        switch (this.framework){
+            case Framework.KOA2:
+                ParseClass=Koa2TemplateLoader;
+                break;
+            case Framework.EXPRESS:
+            default:
+                ParseClass=ExpressTemplateLoader;
+                break;
+        }
+        if(ParseClass!==null){
+            this.template=new ParseClass({}).getTemplate();
+        }
+    }
+
+    __processTemplates(){
+        let self=this,
+            {appName,destPath}=self.options;
+        if(self.template){
+            for(let [k,{operation,path:p,content}] of self.template){
+                // console.log(k,operation,p,content);
+                const genPath=path.join(destPath,k);
+                switch (operation){
+                    case Operation.Write:
+                        console.log('write',path.dirname(genPath));
+                        ensureParent(genPath);
+                        shell.echo(content).to(genPath);
+                        if(k.indexOf('bin')>-1 && k.indexOf('www')>0){
+                            console.log('changemod');
+                            let c=shell.chmod('u+x',genPath);
+                            console.log('test',c);
+                        }
+                        break;
+                    case Operation.Copy:
+                        let sr=path.join(__dirname,'../',p);
+                        console.log('copy',sr,' to ',genPath);
+                        ensureParent(genPath);
+                        shell.cp('-r',sr,genPath);
+                        break;
+                    case Operation.MakeDir:
+                        console.log('mkdir',genPath);
+                        shell.mkdir('-p',genPath);
+                        break;
+                }
+            }
+        }
+    }
+
+
+}
+
+/**
+ * ensure parent exist
+ * @param dirPath
+ */
+const ensureParent=function(dirPath){
+    if(dirPath){
+        let parentPath=path.dirname(dirPath);
+        if(!fs.existsSync(parentPath)){
+            shell.mkdir('-p',parentPath);
+        }
+    }
+};
+
+program
+    .name('fs-gen')
+    .version(version)
+    .usage('[options] [dir]')
+    .option('-f, --framework <framework>','specify <framework> support (express|koa2) (default to express)')
+    .option('-E, --express','specify express as framework')
+    .option('-K, --koa2','specify koa2 as framework')
+    .option('    --view <engine>', 'add view <engine> support (hbs|pug) (defaults to hbs)')
+    .option('    --no-view', 'use static html instead of view engine')
+    .option('    --git', 'init git and add .gitignore')
+    .option('    --eslint','add .eslintrc.js and .eslintignore')
+    .parse(process.argv);
+
+/**
+ * Create an app name from a directory path, fitting npm naming requirements.
+ *
+ * @param {String} pathName
+ */
+
+const createAppName= function(pathName) {
+    return path.basename(pathName)
+        .replace(/[^A-Za-z0-9.-]+/g, '-')
+        .replace(/^[-_.]+|-+$/g, '')
+        .toLowerCase()
+};
+
+const parseArguments= function(pro){
+    let settings={},
+        {framework,view,express,koa2,git,eslint}=pro,
+        destPath= program.args.shift() || '.',
+        appName=createAppName(path.resolve(destPath)) || 'demo';
+    settings.destPath=destPath;
+    settings.appName=appName;
+    if(view===false){
+        settings.noView=true;
+    }else {
+        settings.view=view || ViewTemplate.HBS;
+    }
+    if(koa2 ){
+        settings.framework=Framework.KOA2;
+    }else if(express){
+        settings.framework=Framework.EXPRESS;
+    }else {
+        settings.framework=framework || Framework.EXPRESS;
+    }
+    settings.git=git || false;
+    settings.eslint=eslint || false;
+    console.log(settings);
+    return settings;
+};
+
+const settings=parseArguments(program),
+    serverGen=new ServerGenerator(settings);
+
+// generator project
+serverGen.generator();

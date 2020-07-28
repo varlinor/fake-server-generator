@@ -2,12 +2,14 @@
   "name": "fake-server-generator",
   "version": "0.1.0",
   "description": "generator fake api server project skeleton",
-  "main": "bin/index.js",
+  "main": "bin/fs-gen",
   "bin": {
-    "fs-gen": "bin/index.js"
+    "fs-gen": "bin/fs-gen"
   },
   "scripts": {
+    "build": "rollup -c",
     "lint": "eslint lint",
+    "exec": "node bin/fs-gen",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -33,6 +35,11 @@
   },
   "devDependencies": {
     "eslint": "^7.5.0",
-    "eslint-config-airbnb": "^18.2.0"
+    "eslint-config-airbnb": "^18.2.0",
+    "eslint-plugin-import": "^2.22.0",
+    "rollup": "^2.23.0",
+    "@rollup/plugin-commonjs": "^14.0.0",
+    "@rollup/plugin-json": "^4.1.0",
+    "@rollup/plugin-node-resolve": "^8.4.0"
   }
 }
