@@ -20,6 +20,13 @@ class TemplateLoader {
             bin=this.parseBinContent(),
             app=this.parseAppContent(),
             pkg=this.parsePkgContent();
+        //  add eslint dependencies
+        if(eslint){
+            this.addDepenency(pkg,'eslint','^7.5.0',true);
+            this.addDepenency(pkg,'eslint-plugin-import','^2.22.0',true);
+            this.addDepenency(pkg,'eslint-config-airbnb','^18.2.0',true);
+        }
+
         this.template.set(path.join(TemplatePath.BinPath,'www'),
             createFileObject(Operation.Write,{content:bin}));
         this.template.set(path.join(TemplatePath.AppPath,'app.js'),

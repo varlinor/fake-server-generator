@@ -25,9 +25,6 @@ class ServerGenerator {
 
     constructor(opts) {
         this.options = Object.assign({}, _def_opts, opts);
-        this.appName = this.options.appName;
-        this.destPath = this.options.destPath;
-        this.framework = this.options.framework;
         this.template = null;
     }
 
@@ -36,11 +33,14 @@ class ServerGenerator {
         this.__loadTemplate();
         // process map
         this.__processTemplates();
+        // init git
+        this.__initGit();
     }
 
     __loadTemplate() {
-        let ParseClass = undefined;
-        switch (this.framework) {
+        let {framework}=this.options,
+            ParseClass = undefined;
+        switch (framework) {
             case Framework.KOA2:
                 ParseClass = Koa2TemplateLoader;
                 break;
@@ -94,6 +94,16 @@ class ServerGenerator {
     npm start
 `;
             console.log(helpInfo);
+        }
+    }
+
+    __initGit(){
+        let {destPath,git}=this.options;
+        if(git){
+            // entry destpath
+            shell.cd(destPath);
+            // git init
+            shell.exec('git init');
         }
     }
 
