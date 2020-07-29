@@ -36,7 +36,7 @@ const createAppName= function(pathName) {
 
 const parseArguments= function(pro){
     let settings={},
-        {framework,view,express,koa2,git,eslint}=pro,
+        {framework,view,express,koa2,git,eslint,port}=pro,
         destPath= program.args.shift() || '.',
         appName=createAppName(path.resolve(destPath)) || 'demo';
     settings.destPath=destPath;
@@ -53,6 +53,7 @@ const parseArguments= function(pro){
     }else{
         settings.framework=framework || Framework.EXPRESS;
     }
+    port && (settings.port = port) ;
     settings.git=git || false;
     settings.eslint=eslint || false;
     console.log(settings);

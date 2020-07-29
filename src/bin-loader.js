@@ -19,8 +19,7 @@ const parseCreateServer = function (f) {
 
 
 export const parseBinFile = function (projectName, framework, port = 3000) {
-    return `
-#!/usr/bin/env node
+    return `#!/usr/bin/env node
 
 /**
  * Module dependencies.

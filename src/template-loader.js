@@ -1,6 +1,9 @@
+import fs from 'fs';
 import path from 'path';
 
-import {TemplatePath,Operation,createFileObject} from './constant';
+import {TemplatePath, Operation, createFileObject, TemplateDirType} from './constant';
+import {parseBinFile} from './bin-loader';
+import {parseAppFile} from './app-loader';
 
 /**
  * base class for template loader
@@ -28,7 +31,6 @@ class TemplateLoader {
         addPublics(this.template);
         git && addGitignore(this.template);
         eslint && addESLintFiles(this.template);
-        // console.log(this.template);
     }
 
     getTemplate(){
@@ -38,28 +40,107 @@ class TemplateLoader {
     /**
      * return bin/www content
      */
-    parseBinContent(){}
+    parseBinContent(){
+        //  default load
+        let {appName, framework, port} = this.setting;
+        return parseBinFile(appName, framework, port);
+    }
 
     /**
      * return app.js content
      */
-    parseAppContent(){}
+    parseAppContent(){
+        let {appName,framework,view,noView}=this.setting;
+        return parseAppFile(appName,framework,view,noView);
+    }
 
     /**
      * add router files
      */
-    addRouteFiles(){}
+    addRouteFiles(){
+        let {framework}=this.setting,
+            files=this.listFiles(TemplateDirType.Routes,framework);
+        console.log(files);
+        files.map( f =>{
+            this.template.set(path.join(TemplatePath.RoutePath,f.name.replace(`${framework}.js`,'js')),
+                createFileObject(Operation.Copy,{path:`/templates/${TemplateDirType.Routes}/${f.name}`})) ;
+        });
+    }
 
     /**
      * add views files
      */
-    addViews(){}
+    addViews(){
+        let {view,noView}=this.setting;
+        if(noView){
+            view='html';
+        }
+        let files=this.listFiles(TemplateDirType.Views,view);
+        console.log(files);
+        files.map( f =>{
+            let destP='',
+                srcP=`/templates/${TemplateDirType.Views}/${f.name}`;
+            if(noView){
+                destP=path.join(TemplatePath.PublicPath,f.name);
+            }else{
+                destP=path.join(TemplatePath.ViewPath,f.name);
+            }
+            this.template.set(destP,
+                createFileObject(Operation.Copy,{path:srcP})) ;
+        });
+    }
 
     /**
      * return package.json content
      */
     parsePkgContent(){}
 
+    /**
+     * load files by view type and framework type
+     * @param type  views / routes
+     * @param key  framework / view  value
+     */
+    listFiles(type,key){
+        let queryPath=path.resolve(__dirname,'../templates',type),
+            vRex=new RegExp('\\w*(.'+key+')'),
+            rRex=new RegExp('\\w*(.'+key+'.js)');
+        return fs.readdirSync(queryPath,{withFileTypes:true}).filter( fd =>{
+            if(fd.isFile()){
+                if(type===TemplateDirType.Views){
+                    return vRex.test(fd.name);
+                }else if(type===TemplateDirType.Routes){
+                    return rRex.test(fd.name);
+                }
+            }
+        });
+    }
+
+    getDefaultPkg(){
+        return {
+            version: '0.1.0',
+            private: true,
+            scripts: {
+                start: 'node ./bin/www',
+                dev:'nodemon ./bin/www',
+            },
+            dependencies: {
+                'route-scanner': '^0.2.1',
+                'mockjs':'^1.1.0',
+            },
+            devDependencies:{
+                'nodemon': '^2.0.4'
+            }
+        };
+    }
+
+    addDepenency(p,name,version,isDev=false){
+        if(isDev){
+            p.devDependencies[name]=version;
+        }else{
+            p.dependencies[name]=version;
+
+        }
+    }
 }
 
 const addGitignore = function (map){

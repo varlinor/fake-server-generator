@@ -20,12 +20,16 @@ const Framework={
         HBS:'hbs',
         PUG:'pug'
     },
+    TemplateDirType={
+        Routes:'routes',
+        Views:'views',
+    },
     TemplatePath={
         BinPath:'/bin',
         AppPath:'./',
         PublicPath:'/public',
         RoutePath:'/routes',
-        ViewPath:'/view',
+        ViewPath:'/views',
         GitIgnore:'./',
         PkgPath:'./',
         ESLint:'./'
@@ -55,6 +59,302 @@ function createFileObject(operation,opts){
 }
 
 /**
+ * parse createServer script
+ */
+const parseCreateServer = function (f) {
+    let script = '';
+    switch (f) {
+        case Framework.KOA2:
+            script = 'app.callback()';
+            break;
+        case Framework.EXPRESS:
+        default:
+            script = 'app';
+            break;
+    }
+    return script;
+};
+
+
+const parseBinFile = function (projectName, framework, port = 3000) {
+    return `#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var app = require('../app');
+var debug = require('debug')('${projectName}:server');
+var http = require('http');
+
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort(process.env.PORT || '${port}');
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(${parseCreateServer(framework)});
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+
+  return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  var bind = typeof port === 'string'
+    ? 'Pipe ' + port
+    : 'Port ' + port;
+
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+  var addr = server.address();
+  var bind = typeof addr === 'string'
+    ? 'pipe ' + addr
+    : 'port ' + addr.port;
+  debug('Listening on ' + bind);
+}
+`;
+};
+
+/**
+ * parse app.js content
+ */
+const parseAppFile =function (appName,framework,view,noView){
+    let method,
+        commonImport=`path = require('path'),
+    scanner = require('route-scanner')`;
+    switch (framework) {
+        case Framework.KOA2:
+            method=formatAppForKoa2;
+            break;
+        case Framework.EXPRESS:
+        default:
+            method=formatAppForExpress;
+            break;
+    }
+    return method(appName,view,noView,commonImport);
+};
+
+const formatAppForExpress=function (appName,view,noView,commonImport) {
+    let viewEngineCode='';
+    if(noView){
+        // html
+        viewEngineCode='';
+    }else {
+        let hbsPartial='';
+        if(ViewTemplate.HBS===view){
+            hbsPartial='app.engine(\'hbs\',require(\'hbs\').__express); ';
+        }
+        viewEngineCode=`
+// view engine setup
+${hbsPartial}
+app.set('view engine', '${view}');
+app.set('views', path.join(__dirname, 'views'));
+        `;
+    }
+
+    return `const createError = require('http-errors'),
+    express = require('express'),
+    cookieParser = require('cookie-parser'),
+    logger = require('morgan'),
+    cors=require('cors'),
+    app = express(),
+    ${commonImport};
+
+${viewEngineCode}
+
+app.use(logger('${appName}'));
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser());
+app.use(express.static(path.join(__dirname, 'public')));
+
+//  add cors
+app.use(cors());
+
+//  load routers
+scanner(app,{
+    debug:false,
+    routerPath: path.join(__dirname, 'routes'),
+    prefix:'${appName}',   //  modifier
+    replacePaths:[{
+        from:'/index',
+        to:'/'
+    }],
+    /*extraMaps:[{
+        rootPath:path.join(__dirname, '/other-paths'),
+        fileMaps:[{
+            url:'/admin',
+            file:'admin.js'
+        }]
+    }]*/
+});
+
+// catch 404 and forward to error handler
+app.use(function(req, res, next) {
+  next(createError(404));
+});
+
+module.exports = app; 
+`;
+};
+
+const formatAppForKoa2=function (appName,view,noView,commonImport) {
+    let viewImport='',
+        viewEngineCode='';
+    if(noView){
+        // html
+        viewImport=`views = require('koa-views'),  // not support when you select hbs as viewEngine
+                `;
+        viewEngineCode=`
+app.use(views(__dirname + '/views', {
+  extension: 'html'
+}));
+        `;
+    }else {
+        switch (view){
+            case ViewTemplate.PUG:
+                viewImport='views = require(\'koa-views\'),  // not support when you select hbs as viewEngine';
+                viewEngineCode=`
+app.use(views(__dirname + '/views', {
+  extension: '${view}'
+}));
+        `;
+                break;
+            case ViewTemplate.HBS:
+            default:
+                viewImport='hbs = require(\'koa-hbs\'),';
+                viewEngineCode=`
+app.use(hbs.middleware({
+    viewPath:path.join(__dirname,'views'),
+    defaultLayout:path.join(__dirname , 'views'),
+    extname: ".hbs",
+    locals:{
+        layout:'layout'
+    }
+}));
+                `;
+                break;
+        }
+
+    }
+    return `const Koa = require('koa'),
+    app = new Koa(),
+    ${viewImport}
+    json = require('koa-json'),
+    onerror = require('koa-onerror'),
+    bodyparser = require('koa-bodyparser'),
+    logger = require('koa-logger'),
+    cors = require('koa2-cors');
+    ${commonImport};
+
+// error handler
+onerror(app);
+
+// middlewares
+app.use(bodyparser({
+  enableTypes:['json', 'form', 'text']
+}));
+app.use(json());
+app.use(logger());
+app.use(require('koa-static')(path.join(__dirname, 'public')));
+
+// set view
+${viewEngineCode}
+
+//  add cors
+app.use(cors());
+
+// logger
+app.use(async (ctx, next) => {
+  const start = new Date();
+  await next();
+  const ms = new Date() - start;
+  console.log(\`\${ctx.method} \${ctx.url} - \${ms}ms\`);
+});
+
+//  load routers
+scanner(app,{
+    debug:false,
+    routerPath: path.join(__dirname, 'routes'),
+    prefix:'${appName}',   //  modifier
+    /*replacePaths:[{
+        from:'/index',
+        to:'/'
+    }],
+    extraMaps:[{
+        rootPath:path.join(__dirname, '/other-paths'),
+        fileMaps:[{
+            url:'/admin',
+            file:'admin.js'
+        }]
+    }]*/
+});
+
+// error-handling
+app.on('error', (err, ctx) => {
+  console.error('server error', err, ctx)
+});
+
+module.exports = app;
+    `;
+};
+
+/**
  * base class for template loader
  */
 class TemplateLoader {
@@ -65,7 +365,8 @@ class TemplateLoader {
     }
 
     __init() {
-        let bin=this.parseBinContent(),
+        let {git,eslint}=this.setting,
+            bin=this.parseBinContent(),
             app=this.parseAppContent(),
             pkg=this.parsePkgContent();
         this.template.set(path.join(TemplatePath.BinPath,'www'),
@@ -77,8 +378,8 @@ class TemplateLoader {
         this.addRouteFiles();
         this.addViews();
         addPublics(this.template);
-        addGitignore(this.template);
-        // console.log(this.template);
+        git && addGitignore(this.template);
+        eslint && addESLintFiles(this.template);
     }
 
     getTemplate(){
@@ -88,28 +389,107 @@ class TemplateLoader {
     /**
      * return bin/www content
      */
-    parseBinContent(){}
+    parseBinContent(){
+        //  default load
+        let {appName, framework, port} = this.setting;
+        return parseBinFile(appName, framework, port);
+    }
 
     /**
      * return app.js content
      */
-    parseAppContent(){}
+    parseAppContent(){
+        let {appName,framework,view,noView}=this.setting;
+        return parseAppFile(appName,framework,view,noView);
+    }
 
     /**
      * add router files
      */
-    addRouteFiles(){}
+    addRouteFiles(){
+        let {framework}=this.setting,
+            files=this.listFiles(TemplateDirType.Routes,framework);
+        console.log(files);
+        files.map( f =>{
+            this.template.set(path.join(TemplatePath.RoutePath,f.name.replace(`${framework}.js`,'js')),
+                createFileObject(Operation.Copy,{path:`/templates/${TemplateDirType.Routes}/${f.name}`})) ;
+        });
+    }
 
     /**
      * add views files
      */
-    addViews(){}
+    addViews(){
+        let {view,noView}=this.setting;
+        if(noView){
+            view='html';
+        }
+        let files=this.listFiles(TemplateDirType.Views,view);
+        console.log(files);
+        files.map( f =>{
+            let destP='',
+                srcP=`/templates/${TemplateDirType.Views}/${f.name}`;
+            if(noView){
+                destP=path.join(TemplatePath.PublicPath,f.name);
+            }else {
+                destP=path.join(TemplatePath.ViewPath,f.name);
+            }
+            this.template.set(destP,
+                createFileObject(Operation.Copy,{path:srcP})) ;
+        });
+    }
 
     /**
      * return package.json content
      */
     parsePkgContent(){}
 
+    /**
+     * load files by view type and framework type
+     * @param type  views / routes
+     * @param key  framework / view  value
+     */
+    listFiles(type,key){
+        let queryPath=path.resolve(__dirname,'../templates',type),
+            vRex=new RegExp('\\w*(.'+key+')'),
+            rRex=new RegExp('\\w*(.'+key+'.js)');
+        return fs.readdirSync(queryPath,{withFileTypes:true}).filter( fd =>{
+            if(fd.isFile()){
+                if(type===TemplateDirType.Views){
+                    return vRex.test(fd.name);
+                }else if(type===TemplateDirType.Routes){
+                    return rRex.test(fd.name);
+                }
+            }
+        });
+    }
+
+    getDefaultPkg(){
+        return {
+            version: '0.1.0',
+            private: true,
+            scripts: {
+                start: 'node ./bin/www',
+                dev:'nodemon ./bin/www',
+            },
+            dependencies: {
+                'route-scanner': '^0.2.1',
+                'mockjs':'^1.1.0',
+            },
+            devDependencies:{
+                'nodemon': '^2.0.4'
+            }
+        };
+    }
+
+    addDepenency(p,name,version,isDev=false){
+        if(isDev){
+            p.devDependencies[name]=version;
+        }else {
+            p.dependencies[name]=version;
+
+        }
+    }
 }
 
 const addGitignore = function (map){
@@ -126,119 +506,187 @@ const addPublics = function (map){
     return map;
 };
 
+const addESLintFiles =function (map) {
+    map.set(path.join(TemplatePath.ESLint,'.eslintignore'),
+        createFileObject(Operation.Copy,{path:'/templates/eslintignore'}));
+    map.set(path.join(TemplatePath.ESLint,'.eslintrc.js'),
+        createFileObject(Operation.Copy,{path:'/templates/eslintrc.js'}));
+    return map;
+};
+
 class Koa2TemplateLoader extends TemplateLoader{
 
     constructor(setting){
         super(setting);
     }
 
-    parseBinContent(){}
+    // parseBinContent() { }
 
-    parseAppContent(){}
+    // parseAppContent() { }
 
-    addRouteFiles(){}
+    // addRouteFiles() { }
 
-    addViews(){}
+    // addViews() { }
 
-    parsePkgContent(){}
+    parsePkgContent() {
+        let {appName,view,noView}=this.setting;
+        const pkg=Object.assign({},this.getDefaultPkg(),{
+            name:appName,
+            description:'fake api service, develop init faster!',
+            keywords:['fake-server-generator','fake-server','koa2'],
+        });
+
+        // process framework
+        this.addDepenency(pkg,'debug','~2.6.9');
+        this.addDepenency(pkg,'koa','^2.13.0');
+        this.addDepenency(pkg,'koa-bodyparser','^4.2.1');
+        this.addDepenency(pkg,'koa-convert','^1.2.0');
+        this.addDepenency(pkg,'koa2-cors','^2.0.6');
+        this.addDepenency(pkg,'koa-json','^2.0.2');
+        this.addDepenency(pkg,'koa-logger','^3.2.0');
+        this.addDepenency(pkg,'koa-onerror','^4.1.0');
+        this.addDepenency(pkg,'koa-router','^7.4.0');
+        this.addDepenency(pkg,'koa-static','^5.0.0');
+
+        // process view
+        if(!noView){
+            if(ViewTemplate.PUG===view){
+                this.addDepenency(pkg,'koa-views','^6.2.0');
+                this.addDepenency(pkg,'pug','^3.0.0');
+            }else {
+                this.addDepenency(pkg,'koa-hbs','^1.0.0');
+            }
+        }
+        return JSON.stringify(pkg, null, 2);
+    }
 }
 
-class ExpressTemplateLoader extends TemplateLoader{
+class ExpressTemplateLoader extends TemplateLoader {
 
-    constructor(setting){
+    constructor(setting) {
         super(setting);
     }
 
-    parseBinContent(){}
+    // parseBinContent() { }
 
-    parseAppContent(){}
+    // parseAppContent() { }
 
-    addRouteFiles(){}
+    // addRouteFiles() { }
 
-    addViews(){}
+    // addViews() { }
 
-    parsePkgContent(){}
+    parsePkgContent() {
+        let {appName,view,noView}=this.setting;
+        const pkg=Object.assign({},this.getDefaultPkg(),{
+            name:appName,
+            description:'fake api service, develop init faster!',
+            keywords:['fake-server-generator','fake-server','express'],
+        });
+
+        // process framework
+        this.addDepenency(pkg,'cors','^2.8.5');
+        this.addDepenency(pkg,'cookie-parser','~1.4.4');
+        this.addDepenency(pkg,'debug','~2.6.9');
+        this.addDepenency(pkg,'express','~4.16.0');
+        this.addDepenency(pkg,'http-errors','~1.6.2');
+        this.addDepenency(pkg,'morgan','~1.9.0');
+
+        // process view
+        if(!noView){
+            if(ViewTemplate.PUG===view){
+                this.addDepenency(pkg,'pug','^3.0.0');
+            }else {
+                this.addDepenency(pkg,'hbs','^4.1.1');
+            }
+        }
+        return JSON.stringify(pkg, null, 2);
+    }
 }
 
-const _def_opts={
-    appName:'',
-    destPath:'',
-    framework:'',
-    view:'',
-    noView:false,
-    git:false,
-    eslint:false,
+const _def_opts = {
+    appName: '',
+    destPath: '',
+    port:3000,
+    framework: '',
+    view: '',
+    noView: false,
+    git: false,
+    eslint: false,
 };
 
 /**
  * generator framework template
  */
-class ServerGenerator{
+class ServerGenerator {
 
-    constructor(opts){
-        this.options=Object.assign({},_def_opts,opts);
-        this.appName=this.options.appName;
-        this.destPath=this.options.destPath;
-        this.framework=this.options.framework;
-        this.view=this.options.view;
-        this.gitFlag=this.options.git;
-        this.eslintFlag=this.options.eslint;
-        this.template=null;
+    constructor(opts) {
+        this.options = Object.assign({}, _def_opts, opts);
+        this.appName = this.options.appName;
+        this.destPath = this.options.destPath;
+        this.framework = this.options.framework;
+        this.template = null;
     }
 
-    generator(){
+    generator() {
         // load to map
         this.__loadTemplate();
         // process map
         this.__processTemplates();
     }
 
-    __loadTemplate(){
-        let ParseClass=undefined;
-        switch (this.framework){
+    __loadTemplate() {
+        let ParseClass = undefined;
+        switch (this.framework) {
             case Framework.KOA2:
-                ParseClass=Koa2TemplateLoader;
+                ParseClass = Koa2TemplateLoader;
                 break;
             case Framework.EXPRESS:
             default:
-                ParseClass=ExpressTemplateLoader;
+                ParseClass = ExpressTemplateLoader;
                 break;
         }
-        if(ParseClass!==null){
-            this.template=new ParseClass({}).getTemplate();
+        if (ParseClass !== null) {
+            this.template = new ParseClass(this.options).getTemplate();
         }
     }
 
-    __processTemplates(){
-        let self=this,
-            {appName,destPath}=self.options;
-        if(self.template){
-            for(let [k,{operation,path:p,content}] of self.template){
+    __processTemplates() {
+        let self = this,
+            {appName, destPath} = self.options;
+        if (self.template) {
+            for (let [k, {operation, path: p, content}] of self.template) {
                 // console.log(k,operation,p,content);
-                const genPath=path.join(destPath,k);
-                switch (operation){
+                const genPath = path.join(destPath, k);
+                switch (operation) {
                     case Operation.Write:
-                        console.log('write',path.dirname(genPath));
+                        console.log('write', path.dirname(genPath));
                         ensureParent(genPath);
                         shell.echo(content).to(genPath);
-                        if(k.indexOf('bin')>-1 && k.indexOf('www')>0){
-                            console.log('changemod');
-                            let c=shell.chmod('u+x',genPath);
-                            console.log('test',c);
+                        if (k.indexOf('bin') > -1 && k.indexOf('www') > 0) {
+                            console.log('add x to file:bin/www');
+                            shell.chmod('u+x', genPath);
                         }
                         break;
                     case Operation.Copy:
-                        let sr=path.join(__dirname,'../',p);
-                        console.log('copy',sr,' to ',genPath);
+                        let sr = path.join(__dirname, '../', p);
+                        console.log('copy', sr, ' to ', genPath);
                         ensureParent(genPath);
-                        shell.cp('-r',sr,genPath);
+                        shell.cp('-r', sr, genPath);
                         break;
                     case Operation.MakeDir:
-                        console.log('mkdir',genPath);
-                        shell.mkdir('-p',genPath);
+                        console.log('mkdir', genPath);
+                        shell.mkdir('-p', genPath);
                         break;
                 }
             }
+            // finish generator
+            console.log(`You can start your app[${appName}] with this command:`);
+            const helpInfo=`
+    cd ${appName}/
+    npm install
+    npm start
+`;
+            console.log(helpInfo);
         }
     }
 
@@ -249,11 +697,11 @@ class ServerGenerator{
  * ensure parent exist
  * @param dirPath
  */
-const ensureParent=function(dirPath){
-    if(dirPath){
-        let parentPath=path.dirname(dirPath);
-        if(!fs.existsSync(parentPath)){
-            shell.mkdir('-p',parentPath);
+const ensureParent = function (dirPath) {
+    if (dirPath) {
+        let parentPath = path.dirname(dirPath);
+        if (!fs.existsSync(parentPath)) {
+            shell.mkdir('-p', parentPath);
         }
     }
 };
@@ -267,6 +715,7 @@ program
     .option('-K, --koa2','specify koa2 as framework')
     .option('    --view <engine>', 'add view <engine> support (hbs|pug) (defaults to hbs)')
     .option('    --no-view', 'use static html instead of view engine')
+    .option('-p, --port <port>','specify <port> to this server')
     .option('    --git', 'init git and add .gitignore')
     .option('    --eslint','add .eslintrc.js and .eslintignore')
     .parse(process.argv);
@@ -281,12 +730,12 @@ const createAppName= function(pathName) {
     return path.basename(pathName)
         .replace(/[^A-Za-z0-9.-]+/g, '-')
         .replace(/^[-_.]+|-+$/g, '')
-        .toLowerCase()
+        .toLowerCase();
 };
 
 const parseArguments= function(pro){
     let settings={},
-        {framework,view,express,koa2,git,eslint}=pro,
+        {framework,view,express,koa2,git,eslint,port}=pro,
         destPath= program.args.shift() || '.',
         appName=createAppName(path.resolve(destPath)) || 'demo';
     settings.destPath=destPath;
@@ -303,6 +752,7 @@ const parseArguments= function(pro){
     }else {
         settings.framework=framework || Framework.EXPRESS;
     }
+    port && (settings.port = port) ;
     settings.git=git || false;
     settings.eslint=eslint || false;
     console.log(settings);

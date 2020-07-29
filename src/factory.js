@@ -50,7 +50,7 @@ class ServerGenerator {
                 break;
         }
         if (ParseClass !== null) {
-            this.template = new ParseClass({}).getTemplate();
+            this.template = new ParseClass(this.options).getTemplate();
         }
     }
 
@@ -89,10 +89,10 @@ class ServerGenerator {
             // finish generator
             console.log(`You can start your app[${appName}] with this command:`);
             const helpInfo=`
-                cd ${appName}/
-                npm install
-                npm start
-            `;
+    cd ${appName}/
+    npm install
+    npm start
+`;
             console.log(helpInfo);
         }
     }

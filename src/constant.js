@@ -7,12 +7,16 @@ export const Framework={
         HBS:'hbs',
         PUG:'pug'
     },
+    TemplateDirType={
+        Routes:'routes',
+        Views:'views',
+    },
     TemplatePath={
         BinPath:'/bin',
         AppPath:'./',
         PublicPath:'/public',
         RoutePath:'/routes',
-        ViewPath:'/view',
+        ViewPath:'/views',
         GitIgnore:'./',
         PkgPath:'./',
         ESLint:'./'
